@@ -13,20 +13,22 @@ readme = ''
 
 setup(
     long_description=readme,
-    name='pontab',
+    name='racoon',
     version='0.1.0',
     python_requires='==3.*,>=3.7.6',
     author='ktrw',
     author_email='ktr.w1011@gmail.com',
+    entry_points={"console_scripts": ["racoon-exp = racoon.exp:main"]},
     packages=[
-        'pontab.dataset', 'pontab.encoder', 'pontab.encoder._custom',
-        'pontab.estimator', 'pontab.experiment', 'pontab.runner'
+        'racoon.dataset', 'racoon.encoder', 'racoon.encoder._custom',
+        'racoon.estimator', 'racoon.experiment', 'racoon.runner'
     ],
     package_dir={"": "."},
     package_data={},
     install_requires=[
         'catboost==0.*,>=0.24.4', 'category-encoders==2.*,>=2.2.2',
-        'datasets==1.*,>=1.2.1', 'lightgbm==3.*,>=3.1.1', 'pandas==1.*,>=1.1.5',
+        'datasets==1.*,>=1.2.1', 'ipynb-path==0.*,>=0.1.4',
+        'lightgbm==3.*,>=3.1.1', 'pandas==1.*,>=1.1.5',
         'scikit-learn==0.*,>=0.24.0', 'tensorflow==2.*,>=2.3.1', 'xfeat',
         'xgboost==1.*,>=1.3.1'
     ],

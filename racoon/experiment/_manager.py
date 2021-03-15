@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 class ExpManager:
     def __init__(self,
         root_exp_dir:Optional[Path]=None,
@@ -20,23 +19,63 @@ class ExpManager:
         self.root_exp_dir = root_exp_dir
         if root_exp_dir is None:
             self.root_exp_dir= Path.cwd()
-    
-        self.version = self._exp_version()
-        self.exp_dir = self.root_exp_dir / ('exp-' + self.version)
 
-        # make features directory
+        self.name = None
+        self.version = None
+        self.exp_dir = None
+        self.features_dir = None
+        self.output_dir = None
+
+    def init(self, name:Optional[str]=None):
+        if self.version is not None:
+            raise ValueError("It's already initialized")
+
+        self.version = self.next_exp_version()
+
+        if self.name is None:
+            self.exp_dir = self.root_exp_dir / ('exp-' + self.version)
+        else:
+            self.exp_dir = self.root_exp_dir / ('exp-' + self.version + "-" + self.name)
+
         self.features_dir = self.exp_dir / 'features'
-        self.features_dir.mkdir(exist_ok=True, parents=True)
-
-        # make output directory
         self.output_dir = self.exp_dir / 'output'
+
+        self.features_dir.mkdir(exist_ok=True, parents=True)
         self.output_dir.mkdir(exist_ok=True, parents=True)
 
+        print(self)
+
+    def start(self):
+        self.version = self.root_exp_dir.name
+
+        self.exp_dir = self.root_exp_dir
+        self.features_dir = self.exp_dir / 'features'
+        self.output_dir = self.exp_dir / 'output'
+
+        print(self)
+
+    def read(self, version:Optional[int]=None):
+
+        try:
+            exp_dir = list((self.root_exp_dir).glob(f'exp-{version}'))[0]
+        except IndexError:
+            raise ValueError(f"Not Found Experiment Version {version}")
+
+        self.exp_dir = exp_dir
+        self.features_dir = self.exp_dir / 'features'
+        self.output_dir = self.exp_dir / 'output'
+
+        print(self)
+
     def __repr__(self) -> str:
-        return f"root experiment directory: {str(self.root_exp_dir)::>10}\n"\
-            f"{'experiment version'}: {str(self.exp_dir.name):>10}\n"\
-            f"{'features directory'}: {str(self.features_dir.stem):>10}\n"\
-            f"{'output directory'}: {str(self.output_dir.stem):>10}\n"
+        if self.exp_dir is None:
+            return f"root experiment directory: {str(self.root_exp_dir)::>10}\n"\
+                f"experiment directory is not initialized"
+        else:
+            return f"root experiment directory: {str(self.root_exp_dir)::>10}\n"\
+                f"{'experiment version'}: {str(self.exp_dir.name):>10}\n"\
+                f"{'features directory'}: {str(self.features_dir.stem):>10}\n"\
+                f"{'output directory'}: {str(self.output_dir.stem):>10}\n"
 
     def _get_current_file_path(self) -> str:
         try:
@@ -45,16 +84,21 @@ class ExpManager:
         except:
             raise ValueError
 
-    def _exp_version(self) -> str:
+    def next_exp_version(self) -> int:
+        version = self.newest_exp_version()
+        return str(version+1)
+
+    def newest_exp_version(self) -> int:
 
         exps = list((self.root_exp_dir).glob('exp-*'))
         exps_dir = [p for p in exps if p.is_dir()]
         if len(exps_dir) == 0:
-            return '0'
+            return 0
         else:
             vers = list(map(lambda x: int(str(x).split('-')[1]), exps_dir))
             vers = sorted(vers)[::-1][0]
-        return str(int(vers)+1)
+
+        return int(vers)
 
     def sweep(self, feature=True, output=True) -> None:
         if feature:
@@ -65,9 +109,6 @@ class ExpManager:
             shutil.rmtree(self.output_dir)
             self.features_dir.mkdir(exist_ok=False)
             print('[Swept Output Directory]')
-
-    def copy_current_file(self):
-        pass
 
     def store_feature(self, name:str, input_df:pd.DataFrame) -> None:
         name = name + '.pkl'
