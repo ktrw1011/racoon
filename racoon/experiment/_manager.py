@@ -12,13 +12,14 @@ class ExpManager:
         """[summary]
 
         Args:
-            root_exp_dir (Optional[Path], optional): 実験ルートディレクトリ。デフォルトでカレントディレクトリ
-            exp_name (Optional[str], optional): 実験名。デフォルトで
+            root_exp_dir (Optional[Path], optional): 実験ルートディレクトリ
+            exp_name (Optional[str], optional): 実験名
         """
 
-        self.root_exp_dir = root_exp_dir
         if root_exp_dir is None:
             self.root_exp_dir= Path.cwd()
+        else:
+            self.root_exp_dir = Path(root_exp_dir)
 
         self.name = None
         self.version = None
@@ -26,16 +27,16 @@ class ExpManager:
         self.features_dir = None
         self.output_dir = None
 
-    def init(self, name:Optional[str]=None):
+    def int_exp_dir(self, name:Optional[str]=None):
         if self.version is not None:
             raise ValueError("It's already initialized")
 
         self.version = self.next_exp_version()
 
         if self.name is None:
-            self.exp_dir = self.root_exp_dir / ('exp-' + self.version)
+            self.exp_dir = self.root_exp_dir / ('exp-' + self._pad_version_string(self.version))
         else:
-            self.exp_dir = self.root_exp_dir / ('exp-' + self.version + "-" + self.name)
+            self.exp_dir = self.root_exp_dir / ('exp-' + self._pad_version_string(self.version) + "-" + self.name)
 
         self.features_dir = self.exp_dir / 'features'
         self.output_dir = self.exp_dir / 'output'
@@ -54,10 +55,11 @@ class ExpManager:
 
         print(self)
 
-    def read(self, version:Optional[int]=None):
+    def read(self, version:int):
 
         try:
-            exp_dir = list((self.root_exp_dir).glob(f'exp-{version}'))[0]
+            version_string = self._pad_version_string(version)
+            exp_dir = list((self.root_exp_dir).glob(f'exp-{version_string}'))[0]
         except IndexError:
             raise ValueError(f"Not Found Experiment Version {version}")
 
@@ -67,26 +69,30 @@ class ExpManager:
 
         print(self)
 
+    def _pad_version_string(self, version:int) -> str:
+        return str(version).zfill(3)
+
     def __repr__(self) -> str:
         if self.exp_dir is None:
-            return f"root experiment directory: {str(self.root_exp_dir)::>10}\n"\
+            return f"root experiment directory: {str(self.root_exp_dir)}\n"\
                 f"experiment directory is not initialized"
         else:
-            return f"root experiment directory: {str(self.root_exp_dir)::>10}\n"\
-                f"{'experiment version'}: {str(self.exp_dir.name):>10}\n"\
-                f"{'features directory'}: {str(self.features_dir.stem):>10}\n"\
-                f"{'output directory'}: {str(self.output_dir.stem):>10}\n"
+            return f"root experiment directory: {str(self.root_exp_dir)}\n"\
+                f"{'experiment version'}: {str(self.exp_dir.name)}\n"\
+                f"{'features directory'}: {str(self.features_dir.stem)}\n"\
+                f"{'output directory'}: {str(self.output_dir.stem)}\n"
 
-    def _get_current_file_path(self) -> str:
+    def current_file_path(self, password:Optional[str]=None) -> str:
         try:
             import ipynb_path
-            return ipynb_path.get()
         except:
-            raise ValueError
+            raise ImportError
+        
+        return ipynb_path.get(password=password)
 
     def next_exp_version(self) -> int:
         version = self.newest_exp_version()
-        return str(version+1)
+        return version+1
 
     def newest_exp_version(self) -> int:
 
@@ -105,7 +111,8 @@ class ExpManager:
             shutil.rmtree(self.features_dir)
             self.features_dir.mkdir(exist_ok=False)
             print('[Swept Features Directory]')
-        else:
+
+        if output:
             shutil.rmtree(self.output_dir)
             self.features_dir.mkdir(exist_ok=False)
             print('[Swept Output Directory]')
@@ -131,3 +138,6 @@ class ExpManager:
                 _dfs.append(pickle.load(f))
 
         return pd.concat(_dfs, axis=1)
+
+    def finish(self):
+        pass

@@ -1,5 +1,4 @@
 import argparse
-from os import name
 from racoon.experiment import ExpManager
 
 def main():
@@ -10,8 +9,8 @@ def main():
 
     manger = ExpManager()
 
-    manger.init(
-        name=name
+    manger.int_exp_dir(
+        name=args.name
     )
 
 if __name__ == '__main__':
