@@ -21,6 +21,7 @@ install_requires = \
  'lightgbm>=3.3.2,<4.0.0',
  'pandas>=1.4.1,<2.0.0',
  'scikit-learn>=1.0.2,<2.0.0',
+ 'xfeat @ git+https://github.com/pfnet-research/xfeat.git@master',
  'xgboost>=1.5.2,<2.0.0']
 
 entry_points = \

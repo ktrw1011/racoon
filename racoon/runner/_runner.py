@@ -15,7 +15,7 @@ from sklearn.exceptions import NotFittedError
 
 from datasets import Dataset
 
-from ..estimator.type import estimator_type, LGBM
+from ..estimator.type import estimator_type, LGBM, CAT, XGB, Estimators
 from ..dataset import TableDataset
 
 @dataclass
@@ -43,7 +43,7 @@ class EvalResult:
 
 @dataclass
 class ModelSet:
-    model: BaseEstimator
+    model: Estimators
     fit_params:Optional[Dict]=None
     model_name: Optional[str]=None
 
@@ -62,7 +62,7 @@ class BaseRunner(BaseEstimator):
         self.table_dataset = table_dataset
         self.metric_func = metric_func
 
-    def fit(self, model_set:ModelSet) -> List[BaseEstimator]:
+    def fit(self, model_set:ModelSet) -> List[Estimators]:
         trained_models = []
 
         for (trn_set, val_set) in self.table_dataset.iter_fold():
@@ -71,7 +71,7 @@ class BaseRunner(BaseEstimator):
         
         return trained_models
 
-    def evaluate(self, trained_models: List[BaseEstimator]) -> EvalResult:
+    def evaluate(self, trained_models: List[Estimators]) -> EvalResult:
         model_name = trained_models[0].__class__.__name__
 
         class_size = self.table_dataset.class_size
@@ -124,7 +124,7 @@ class BaseRunner(BaseEstimator):
             model_name=model_name
         )
 
-    def fit_eval(self, model_set:ModelSet) -> Tuple[EvalResult, List[BaseEstimator]]:
+    def fit_eval(self, model_set:ModelSet) -> Tuple[EvalResult, List[Estimators]]:
         trained_models = self.fit(model_set)
         eval_result = self.evaluate(trained_models)
 
@@ -147,7 +147,7 @@ class StackedRunner:
             
         return runner_sets
 
-    def evaluate(self, trained_models: List[List[BaseEstimator]], runners:List[BaseRunner]):
+    def evaluate(self, trained_models: List[List[Estimators]], runners:List[BaseRunner]):
         for trained_model, runner in zip(trained_models, runners):
             eval_result = runner.evaluate(trained_model)
 
@@ -156,10 +156,10 @@ class StackedRunner:
 def trainer(
     features:np.ndarray,
     targets:np.ndarray,
-    model:BaseEstimator,
+    model:Estimators,
     cv:Iterable[Tuple[np.ndarray, np.ndarray]],
     fit_params:Optional[Dict]=None,
-    ) -> Iterable[BaseEstimator]:
+    ) -> Iterable[Estimators]:
 
     models = []
 
@@ -175,18 +175,18 @@ def trainer(
     return models
 
 def fitter(
-    model:BaseEstimator,
+    model:Estimators,
     trn_set:Iterable[Tuple[np.ndarray, np.ndarray]],
     val_set:Optional[Iterable[Tuple[np.ndarray, np.ndarray]]]=None,
     params:Optional[Dict]=None,
-    ) -> BaseEstimator:
+    ) -> Estimators:
 
     if params is None:
         params = {}
 
     trn_xs, trn_ys = trn_set[0], trn_set[1]
 
-    if not isinstance(model, BaseEstimator):
+    if not isinstance(model, Estimators):
         raise RuntimeError
 
     if estimator_type(model) is LGBM:
@@ -212,7 +212,7 @@ def fitter(
 def evaluator(
     features:np.ndarray,
     targets:np.ndarray,
-    models:Iterable[BaseEstimator],
+    models:Iterable[Estimators],
     cv: Iterable[Tuple[np.ndarray, np.ndarray]],
     test_features:Optional[np.ndarray]=None,
     metric_func=None,
@@ -267,7 +267,7 @@ def evaluator(
 
 def predictor(
     features:np.ndarray,
-    model:BaseEstimator,
+    model:Estimators,
     type_of_target:str,
     ):
 
