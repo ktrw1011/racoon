@@ -5,7 +5,7 @@
 
 import warnings
 from copy import deepcopy
-from typing import Dict, List, Tuple, Iterable, Optional, Union
+from typing import Dict, List, Tuple, Iterable, Optional, Union, Callable
 from dataclasses import dataclass, asdict
 
 import numpy as np
@@ -32,7 +32,7 @@ class EvalResult:
         if self.scores is not None:
             score_mean = np.mean(self.scores)
             score_std = np.std(self.scores)
-            scores = f'scores: {score_mean: .4f}/{score_std:.4f} {self.scores}'
+            scores = f'Avg. scores: {score_mean: .4f}/{score_std:.4f} {self.scores}'
         else:
             scores = 'scores: Not Available Metric Function'
 
@@ -45,11 +45,11 @@ class EvalResult:
 class ModelSet:
     model: Estimators
     fit_params:Optional[Dict]=None
-    model_name: Optional[str]=None
+    name: Optional[str]=None
 
     def __post_init__(self):
-        if self.model_name is None:
-            self.model_name = self.model.__class__.__name__
+        if self.name is None:
+            self.name = self.model.__class__.__name__
 
 
 class BaseRunner(BaseEstimator):
@@ -68,7 +68,7 @@ class BaseRunner(BaseEstimator):
         for (trn_set, val_set) in self.table_dataset.iter_fold():
             _model = fitter(model_set.model, trn_set=trn_set, val_set=val_set, params=model_set.fit_params)
             trained_models.append(_model)
-        
+
         return trained_models
 
     def evaluate(self, trained_models: List[Estimators]) -> EvalResult:
@@ -83,31 +83,29 @@ class BaseRunner(BaseEstimator):
         assert len(trained_models) == len(cv)
 
         if self.table_dataset.class_size > 1:
-            oof = np.zeros((len(train), class_size), dtype=np.float)
+            oof = np.zeros((len(train), class_size), dtype=np.float32)
         else:
-            oof = np.zeros(len(train), dtype=np.float)
+            oof = np.zeros(len(train), dtype=np.float32)
 
         test_probas = None
         if test is not None:
             if class_size > 1:
-                test_probas = np.zeros((len(test), class_size), dtype=np.float)
+                test_probas = np.zeros((len(test), class_size), dtype=np.float32)
             else:
-                test_probas = np.zeros(len(test), dtype=np.float)
+                test_probas = np.zeros(len(test), dtype=np.float32)
 
         scores = None
         if self.metric_func is not None:
-            scores = np.zeros(len(cv), dtype=np.float)
+            scores = np.zeros(len(cv), dtype=np.float32)
 
         for i, (_model, (_, val_idx)) in enumerate(zip(trained_models, cv)):
 
             proba = predictor(train['data'][val_idx], _model, type_of_target)
-
             if test_probas is not None:
                 test_proba = predictor(test['data'], _model, type_of_target)
                 test_probas += test_proba / len(cv)
 
             oof[val_idx] = proba
-            
             if self.metric_func is not None:
                 # calculate each fold score
                 score = self.metric_func(train['label'][val_idx], oof[val_idx])
@@ -116,7 +114,7 @@ class BaseRunner(BaseEstimator):
 
         if self.metric_func is not None:
             print(f"[Overall Score]: {self.metric_func(train['label'], oof):.4f}")
-        
+
         return EvalResult(
             oof = oof,
             scores=scores,
@@ -137,20 +135,24 @@ class RunnerSet:
     runner:BaseRunner
 
 class StackedRunner:
-    def __init__(self):
-        pass
+    def __init__(self, runner:BaseRunner):
+        self.runner = runner
+        self.train_models:List[List[Estimators]] = []
+        self.eval_result:List[EvalResult] = []
 
-    def train(self, runner_sets:Iterable[RunnerSet]):
-        for runner_set in runner_sets:
-            print(f'Train: {runner_set.model_set.name}')
-            trained_models = runner_set.runner.fit(runner_set.model_set)
-            
-        return runner_sets
+    def train_eval(self, models:Iterable[ModelSet]):
+        for model_set in models:
+            print(f'===[Train]===: {model_set.name}')
+            trained_models = self.runner.fit(model_set)
+            self.train_models.append(trained_models)
 
-    def evaluate(self, trained_models: List[List[Estimators]], runners:List[BaseRunner]):
-        for trained_model, runner in zip(trained_models, runners):
-            eval_result = runner.evaluate(trained_model)
+            eval_result = self.runner.evaluate(trained_models)
+            self.eval_result.append(eval_result)
 
+    def emsamble(self, methods:Union[str, Callable]):
+        if len(self.eval_result) <= 1:
+            raise ValueError("Required at least two models to ensemble")
+        
 
 
 def trainer(
@@ -186,12 +188,26 @@ def fitter(
 
     trn_xs, trn_ys = trn_set[0], trn_set[1]
 
-    if not isinstance(model, Estimators):
-        raise RuntimeError
-
     if estimator_type(model) is LGBM:
-        # boosting type
         _model: LGBM = deepcopy(model)
+        _model.fit(
+            X=trn_xs,
+            y=trn_ys,
+            eval_set=[val_set],
+            **params,
+        )
+        return _model
+    elif estimator_type(model) is XGB:
+        _model: XGB = deepcopy(model)
+        _model.fit(
+            X=trn_xs,
+            y=trn_ys,
+            eval_set=[val_set],
+            **params,
+        )
+        return _model
+    elif estimator_type(model) is CAT:
+        _model: CAT = deepcopy(model)
         _model.fit(
             X=trn_xs,
             y=trn_ys,
@@ -209,11 +225,12 @@ def fitter(
             )
         return _model
 
+# 使ってない
 def evaluator(
     features:np.ndarray,
     targets:np.ndarray,
     models:Iterable[Estimators],
-    cv: Iterable[Tuple[np.ndarray, np.ndarray]],
+    cv: List[Tuple[np.ndarray, np.ndarray]],
     test_features:Optional[np.ndarray]=None,
     metric_func=None,
     type_of_target: str = 'auto',
@@ -230,15 +247,15 @@ def evaluator(
 
     assert len(models) == len(cv)
 
-    oof = np.zeros((len(features), cls_size), dtype=np.float) if cls_size > 1 else np.zeros(len(features), dtype=np.float)
+    oof = np.zeros((len(features), cls_size), dtype=np.float32) if cls_size > 1 else np.zeros(len(features), dtype=np.float32)
 
     test_probas = None
     if test_features is not None:
-        test_probas = np.zeros((len(test_features), cls_size), dtype=np.float) if cls_size > 1 else np.zeros(len(test_features), dtype=np.float)
+        test_probas = np.zeros((len(test_features), cls_size), dtype=np.float32) if cls_size > 1 else np.zeros(len(test_features), dtype=np.float32)
 
     scores = None
     if metric_func is not None:
-        scores = np.zeros(len(cv), dtype=np.float)
+        scores = np.zeros(len(cv), dtype=np.float32)
 
     for i, (_model, (trn_idx, val_idx)) in enumerate(zip(models, cv)):
 
@@ -249,7 +266,7 @@ def evaluator(
             test_probas += test_proba / len(cv)
 
         oof[val_idx] = proba
-        
+
         if metric_func is not None:
             # calculate each fold score
             score = metric_func(targets[val_idx], oof[val_idx])
@@ -258,12 +275,13 @@ def evaluator(
 
     if metric_func is not None:
         print(f'[Overall Score]: {metric_func(targets, oof):.4f}')
-    
+
     return EvalResult(
         oof = oof,
         scores=scores,
         test_probas=test_probas
     )
+
 
 def predictor(
     features:np.ndarray,
@@ -272,6 +290,7 @@ def predictor(
     ):
 
     if type_of_target in ('binary', 'multiclass'):
+        # classification
         if hasattr(model, "predict_proba"):
                 proba = model.predict_proba(features)
 
@@ -288,4 +307,5 @@ def predictor(
         else:
             return proba
     else:
+        # regression
         return model.predict(features)
